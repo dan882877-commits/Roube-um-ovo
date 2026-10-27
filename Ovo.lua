@@ -9,8 +9,13 @@ local TeleportService = game:GetService("TeleportService")
 local Players = game:GetService("Players")
 local player = Players.LocalPlayer
 
+if not game:IsLoaded() then game.Loaded:Wait() end
+task.wait(4)
+
 local PLACE_ID = game.PlaceId
-local PESO_MINIMO = 1000000      -- 1 milhão. Mude aqui (ex: 5000000)
+local PESO_MINIMO = 1000000   -- em kg. Prehistoric ~2.5M | Titan Temple ~90k | Cherry ~300
+local MIN_JOGADORES = 1       -- servidor com pelo menos 1 pessoa
+local MAX_JOGADORES = 5       -- e no maximo 5 (servidor vazio)
 local SCRIPT_URL = "https://raw.githubusercontent.com/dan882877-commits/Roube-um-ovo/refs/heads/main/Ovo.lua"
 local rodandoBot = true
 local ovoAlvo = nil
