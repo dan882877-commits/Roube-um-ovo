@@ -29,12 +29,11 @@ local MAX_JOGADORES = 5       -- e no maximo 5 (servidor vazio)
 local ESPERAR_SEGUNDOS = 0    -- sem ovo raro: 0 = fica no servidor esperando spawn. Ex: 600 = troca apos 10 min
 
 -- Tipos aceitos (procura no nome/texto do ovo). Deixe {} para aceitar qualquer tipo.
-local TIPOS = { "eternal", "eterno", "divine", "divino", "secret", "secreto", "whale", "baleia" }
+local TIPOS = { "eternal", "eterno", "divine", "divino", "secret", "secreto" }
 local SCRIPT_URL = "https://raw.githubusercontent.com/dan882877-commits/Roube-um-ovo/refs/heads/main/Ovo.lua"
 local WEBHOOK = ""   -- cole aqui o link do webhook do Discord (opcional)
 local rodandoBot = true
 local ovoAlvo = nil
-local posOvo = nil
 
 -- Se rodar de novo no novo servidor, evita duplicar o painel
 local guiParent = (gethui and gethui()) or game:GetService("CoreGui")
@@ -153,20 +152,10 @@ local function lerPeso(obj)
 end
 
 --========== BUSCA DE OVOS ==========--
--- true se o ovo ja foi pego por algum jogador (mao, mochila, personagem)
-local function naMaoDeAlguem(obj)
-    for _, pl in ipairs(Players:GetPlayers()) do
-        if obj:IsDescendantOf(pl) then return true end
-        if pl.Character and obj:IsDescendantOf(pl.Character) then return true end
-    end
-    return false
-end
-
 local function pareceOvo(obj)
     if not (obj:IsA("Model") or obj:IsA("BasePart")) then return false end
     local n = obj.Name:lower()
-    if not (n:find("ovo") or n:find("egg")) then return false end
-    return not naMaoDeAlguem(obj)
+    return n:find("ovo") or n:find("egg")
 end
 
 local maiorVisto = 0
@@ -230,10 +219,6 @@ local function irAteOvo(ovo)
     root.CFrame = cf + Vector3.new(0, 4, 0)
 end
 
-local function posDoOvo(ovo)
-    return ovo:IsA("Model") and ovo:GetPivot().Position or ovo.Position
-end
-
 --========== SERVER HOP ==========--
 local function alternarServidor()
     setStatus(("Maior: %s kg [%s]. Trocando..."):format(tostring(maiorVisto), maiorInfo), Color3.fromRGB(255, 150, 0))
@@ -285,16 +270,11 @@ task.spawn(function()
     while task.wait(2) do
         if rodandoBot then
             if ovoAlvo then
-                -- Achou gigante: fica parado ate o ovo sumir ou ser roubado
-                local ok = ovoAlvo.Parent ~= nil
-                    and not naMaoDeAlguem(ovoAlvo)
-                    and (posDoOvo(ovoAlvo) - posOvo).Magnitude < 40
-                if ok then
+                -- Achou gigante: fica parado ate o ovo sumir
+                if ovoAlvo.Parent then
                     setStatus("Ovo gigante aqui! Pegue ele.", Color3.fromRGB(255, 215, 0))
                 else
                     ovoAlvo = nil
-                    setStatus("Ovo roubado/sumiu! Procurando outro...", Color3.fromRGB(255, 80, 80))
-                    task.wait(2)
                 end
             else
                 setStatus("Procurando ovo raro...")
@@ -303,7 +283,6 @@ task.spawn(function()
                 if ovo then
                     -- raro E gigante: para aqui
                     ovoAlvo = ovo
-                    posOvo = posDoOvo(ovo)
                     setStatus(("GIGANTE achado! %s kg"):format(tostring(peso)), Color3.fromRGB(255, 215, 0))
                     irAteOvo(ovo)
                     avisarDiscord(peso)
