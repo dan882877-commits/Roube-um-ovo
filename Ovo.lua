@@ -1,6 +1,6 @@
 --==================================================--
 -- SCRIPT DE AUTO-HOP COM PAINEL VISUAL (DELTA MOBILE)
--- Jogo: Roube um Ovo (PlaceId: 1719231710)
+-- Jogo: Roube um Ovo (PlaceId: 17192317180)
 --==================================================--
 
 local HttpService = game:GetService("HttpService")
@@ -10,7 +10,7 @@ local Players = game:GetService("Players")
 local CoreGui = game:GetService("CoreGui")
 
 local DISCORD_WEBHOOK_URL = "https://discord.com"
-local PLACE_ID = game.PlaceId or 1719231710
+local PLACE_ID = game.PlaceId or 17192317180
 local PESO_MINIMO_ALERTA = 50000
 local rodandoBot = true
 
@@ -123,17 +123,14 @@ task.spawn(function()
             statusLabel.Text = "Status: Procurando ovos na sala..."
             statusLabel.TextColor3 = Color3.fromRGB(0, 255, 128)
             
-            -- Procura por ovos no Workspace (Altere "Ovos" se o nome do grupo no jogo for diferente)
             local ovosFolder = Workspace:FindFirstChild("Ovos") or Workspace:FindFirstChild("Eggs")
             local ovoEncontrado = false
             
             if ovosFolder then
                 for _, ovo in pairs(ovosFolder:GetChildren()) do
-                    -- Se encontrar algum ovo grande ou valioso baseado no nome/peso
                     if ovo:IsA("BasePart") or ovo:FindFirstChildOfClass("TouchTransmitter") then
                         ovoEncontrado = true
                         statusLabel.Text = "Status: Ovo detectado! Teleportando..."
-                        -- Teleporta o jogador até o ovo
                         local root = Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
                         if root then
                             root.CFrame = ovo.CFrame
@@ -143,7 +140,6 @@ task.spawn(function()
                 end
             end
             
-            -- Se varreu o mapa e não achou ovos, faz o Server Hop automaticamente
             if not ovoEncontrado then
                 statusLabel.Text = "Status: Nenhum ovo bom. Mudando de sala..."
                 task.wait(1.5)
