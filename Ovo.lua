@@ -51,7 +51,7 @@ local statusLabel = Instance.new("TextLabel")
 statusLabel.Size = UDim2.new(1, -20, 0, 40)
 statusLabel.Position = UDim2.new(0, 10, 0, 45)
 statusLabel.BackgroundTransparency = 1
-statusLabel.Text = "Status: Procurando Ovos..."
+statusLabel.Text = "Status: Iniciando..."
 statusLabel.TextColor3 = Color3.fromRGB(0, 255, 128)
 statusLabel.TextSize = 13
 statusLabel.Font = Enum.Font.SourceSansSemiBold
@@ -88,22 +88,67 @@ toggleButton.MouseButton1Click:Connect(function()
     end
 end)
 
--- FUNÇÕES DE SEGURANÇA E LÓGICA
+-- FUNÇÕES DE SEGURANÇA E LÓGICA DO SERVER HOP
 
-local function esperarAleatorio(minimo, maximo)
-    local tempo = math.random(minimo * 10, maximo * 10) / 10
-    task.wait(tempo)
+local function alternarServidor()
+    statusLabel.Text = "Status: Procurando novo servidor..."
+    statusLabel.TextColor3 = Color3.fromRGB(255, 150, 0)
+    task.wait(1)
+    
+    local x = pcall(function()
+        local sfUrl = "https://roblox.com" .. PLACE_ID .. "/servers/Public?sortOrder=Desc&limit=100"
+        local req = HttpService:JSONDecode(game:HttpGet(sfUrl))
+        local servidores = req and req.data
+        if servidores then
+            for _, s in pairs(servidores) do
+                if s.playing and s.playing < s.maxPlayers and s.id ~= game.JobId then
+                    TeleportService:TeleportToPlaceInstance(PLACE_ID, s.id, Players.LocalPlayer)
+                    return
+                end
+            end
+        end
+    end)
+    
+    if not x then
+        statusLabel.Text = "Erro ao trocar de sala. Tentando novamente..."
+        task.wait(3)
+        TeleportService:Teleport(PLACE_ID, Players.LocalPlayer)
+    end
 end
 
-local function extrairNumero(texto)
-    if not texto then return 0 end
-    local limpo = string.gsub(texto, "%D", "")
-    return tonumber(limpo) or 0
-end
-
-local function monitorarServidor()
-    if not rodandoBot then return end
-    statusLabel.Text = "Status: Varrendo sala atual..."
-    esperarAleatorio(1.5, 2.5)
-    -- O restante da lógica de varredura continua abaixo...
-end
+-- LOOP PRINCIPAL DE VARREDURA
+task.spawn(function()
+    while task.wait(2) do
+        if rodandoBot then
+            statusLabel.Text = "Status: Procurando ovos na sala..."
+            statusLabel.TextColor3 = Color3.fromRGB(0, 255, 128)
+            
+            -- Procura por ovos no Workspace (Altere "Ovos" se o nome do grupo no jogo for diferente)
+            local ovosFolder = Workspace:FindFirstChild("Ovos") or Workspace:FindFirstChild("Eggs")
+            local ovoEncontrado = false
+            
+            if ovosFolder then
+                for _, ovo in pairs(ovosFolder:GetChildren()) do
+                    -- Se encontrar algum ovo grande ou valioso baseado no nome/peso
+                    if ovo:IsA("BasePart") or ovo:FindFirstChildOfClass("TouchTransmitter") then
+                        ovoEncontrado = true
+                        statusLabel.Text = "Status: Ovo detectado! Teleportando..."
+                        -- Teleporta o jogador até o ovo
+                        local root = Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                        if root then
+                            root.CFrame = ovo.CFrame
+                            task.wait(1)
+                        end
+                    end
+                end
+            end
+            
+            -- Se varreu o mapa e não achou ovos, faz o Server Hop automaticamente
+            if not ovoEncontrado then
+                statusLabel.Text = "Status: Nenhum ovo bom. Mudando de sala..."
+                task.wait(1.5)
+                alternarServidor()
+            end
+        end
+    end
+end)
