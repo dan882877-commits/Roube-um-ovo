@@ -89,8 +89,8 @@ local SUFIXOS = { K = 1e3, M = 1e6, B = 1e9, T = 1e12 }
 
 local function parsePeso(texto)
     if type(texto) ~= "string" then return nil end
-    texto = texto:gsub(",", ""):gsub("%s", "")
-    local num, suf = texto:match("(%d+%.?%d*)([KkMmBbTt]?)")
+    texto = texto:lower():gsub("kg", ""):gsub(",", ""):gsub("%s", "")
+    local num, suf = texto:match("(%d+%.?%d*)([kmbt]?)")
     num = tonumber(num)
     if not num then return nil end
     return num * (SUFIXOS[suf:upper()] or 1)
@@ -123,9 +123,9 @@ local function lerPeso(obj)
                     if p then return p end
                 end
             end
-        elseif d:IsA("TextLabel") then
+        elseif d:IsA("TextLabel") and d.Text:lower():find("kg") then
             local p = parsePeso(d.Text)
-            if p and p >= 1000 then return p end
+            if p then return p end
         end
     end
     return nil
@@ -138,13 +138,19 @@ local function pareceOvo(obj)
     return n:find("ovo") or n:find("egg")
 end
 
+local maiorVisto = 0
+
 local function acharOvoGigante()
     local melhor, melhorPeso = nil, 0
+    maiorVisto = 0
     for _, obj in ipairs(Workspace:GetDescendants()) do
         if pareceOvo(obj) then
             local peso = lerPeso(obj)
-            if peso and peso >= PESO_MINIMO and peso > melhorPeso then
-                melhor, melhorPeso = obj, peso
+            if peso then
+                if peso > maiorVisto then maiorVisto = peso end
+                if peso >= PESO_MINIMO and peso > melhorPeso then
+                    melhor, melhorPeso = obj, peso
+                end
             end
         end
     end
@@ -161,25 +167,28 @@ end
 
 --========== SERVER HOP ==========--
 local function alternarServidor()
-    setStatus("Trocando de servidor...", Color3.fromRGB(255, 150, 0))
+    setStatus(("Maior ovo aqui: %s kg. Trocando..."):format(tostring(maiorVisto)), Color3.fromRGB(255, 150, 0))
     local ok, err = pcall(function()
         local url = "https://games.roblox.com/v1/games/" .. PLACE_ID
-            .. "/servers/Public?sortOrder=Desc&limit=100"
-        local resp = game:HttpGet(url)
-        local data = HttpService:JSONDecode(resp)
+            .. "/servers/Public?sortOrder=Asc&excludeFullGames=true&limit=100"
+        local data = HttpService:JSONDecode(game:HttpGet(url))
         local lista = {}
         for _, s in ipairs(data.data or {}) do
-            if s.playing < s.maxPlayers and s.id ~= game.JobId then
+            if s.playing and s.id ~= game.JobId
+                and s.playing >= MIN_JOGADORES
+                and s.playing <= MAX_JOGADORES then
                 table.insert(lista, s.id)
             end
         end
-        if #lista == 0 then error("nenhum servidor livre") end
+        if #lista == 0 then error("sem servidor com " .. MIN_JOGADORES .. "-" .. MAX_JOGADORES .. " jogadores") end
         TeleportService:TeleportToPlaceInstance(PLACE_ID, lista[math.random(#lista)], player)
         task.wait(10)
     end)
     if not ok then
-        setStatus("Erro: " .. tostring(err), Color3.fromRGB(255, 80, 80))
-        task.wait(4)
+        setStatus("Falhou: " .. tostring(err), Color3.fromRGB(255, 80, 80))
+        task.wait(3)
+        pcall(function() TeleportService:Teleport(PLACE_ID, player) end)
+        task.wait(10)
     end
 end
 
