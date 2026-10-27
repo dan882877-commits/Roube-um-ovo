@@ -1,6 +1,6 @@
 --==================================================--
 -- CAÇADOR DE OVOS GIGANTES (Delta Mobile)
--- Só considera ovos com peso >= PESO_MINIMO (milhões)
+-- Só aceita ovos eterno/divino/secreto (lista TIPOS) com peso >= PESO_MINIMO
 --==================================================--
 
 local HttpService = game:GetService("HttpService")
@@ -8,15 +8,30 @@ local Workspace = game:GetService("Workspace")
 local TeleportService = game:GetService("TeleportService")
 local Players = game:GetService("Players")
 local player = Players.LocalPlayer
+local inicioServidor = os.clock()
+
+-- Evita ser expulso por inatividade enquanto espera
+pcall(function()
+    local VirtualUser = game:GetService("VirtualUser")
+    player.Idled:Connect(function()
+        VirtualUser:CaptureController()
+        VirtualUser:ClickButton2(Vector2.new())
+    end)
+end)
 
 if not game:IsLoaded() then game.Loaded:Wait() end
 task.wait(4)
 
 local PLACE_ID = game.PlaceId
-local PESO_MINIMO = 1000000   -- em kg. Prehistoric ~2.5M | Titan Temple ~90k | Cherry ~300
+local PESO_MINIMO = 1000000   -- em kg. Raro abaixo disso e considerado "pequeno" e troca de servidor
 local MIN_JOGADORES = 1       -- servidor com pelo menos 1 pessoa
 local MAX_JOGADORES = 5       -- e no maximo 5 (servidor vazio)
+local ESPERAR_SEGUNDOS = 0    -- sem ovo raro: 0 = fica no servidor esperando spawn. Ex: 600 = troca apos 10 min
+
+-- Tipos aceitos (procura no nome/texto do ovo). Deixe {} para aceitar qualquer tipo.
+local TIPOS = { "eternal", "eterno", "divine", "divino", "secret", "secreto" }
 local SCRIPT_URL = "https://raw.githubusercontent.com/dan882877-commits/Roube-um-ovo/refs/heads/main/Ovo.lua"
+local WEBHOOK = ""   -- cole aqui o link do webhook do Discord (opcional)
 local rodandoBot = true
 local ovoAlvo = nil
 
@@ -47,7 +62,7 @@ Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 10)
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, 0, 0, 35)
 title.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-title.Text = "Ovos Gigantes (1M+)"
+title.Text = "Caçador de Ovos Raros"
 title.TextColor3 = Color3.new(1, 1, 1)
 title.TextSize = 14
 title.Font = Enum.Font.SourceSansBold
@@ -144,22 +159,56 @@ local function pareceOvo(obj)
 end
 
 local maiorVisto = 0
+local maiorInfo = ""
+
+-- Junta nome, atributos e textos do ovo (ex: "Prehistoric Egg (Eternal) 2,536,813kg")
+local function textoDoOvo(obj)
+    local partes = { obj.Name }
+    for nome, valor in pairs(obj:GetAttributes()) do
+        table.insert(partes, nome .. " " .. tostring(valor))
+    end
+    for _, d in ipairs(obj:GetDescendants()) do
+        if d:IsA("TextLabel") then
+            table.insert(partes, d.Text)
+        elseif d:IsA("StringValue") then
+            table.insert(partes, d.Value)
+        end
+    end
+    return table.concat(partes, " "):lower()
+end
+
+local function tipoAceito(texto)
+    if #TIPOS == 0 then return true end
+    for _, t in ipairs(TIPOS) do
+        if texto:find(t, 1, true) then return true end
+    end
+    return false
+end
 
 local function acharOvoGigante()
     local melhor, melhorPeso = nil, 0
-    maiorVisto = 0
+    local raroPequeno = false
+    maiorVisto, maiorInfo = 0, ""
     for _, obj in ipairs(Workspace:GetDescendants()) do
         if pareceOvo(obj) then
             local peso = lerPeso(obj)
             if peso then
-                if peso > maiorVisto then maiorVisto = peso end
-                if peso >= PESO_MINIMO and peso > melhorPeso then
-                    melhor, melhorPeso = obj, peso
+                local texto = textoDoOvo(obj)
+                if peso > maiorVisto then
+                    maiorVisto = peso
+                    maiorInfo = texto:sub(1, 40)
+                end
+                if tipoAceito(texto) then
+                    if peso >= PESO_MINIMO then
+                        if peso > melhorPeso then melhor, melhorPeso = obj, peso end
+                    else
+                        raroPequeno = true
+                    end
                 end
             end
         end
     end
-    return melhor, melhorPeso
+    return melhor, melhorPeso, raroPequeno
 end
 
 local function irAteOvo(ovo)
@@ -172,7 +221,7 @@ end
 
 --========== SERVER HOP ==========--
 local function alternarServidor()
-    setStatus(("Maior ovo aqui: %s kg. Trocando..."):format(tostring(maiorVisto)), Color3.fromRGB(255, 150, 0))
+    setStatus(("Maior: %s kg [%s]. Trocando..."):format(tostring(maiorVisto), maiorInfo), Color3.fromRGB(255, 150, 0))
     local ok, err = pcall(function()
         local url = "https://games.roblox.com/v1/games/" .. PLACE_ID
             .. "/servers/Public?sortOrder=Asc&excludeFullGames=true&limit=100"
@@ -197,25 +246,59 @@ local function alternarServidor()
     end
 end
 
+--========== AVISO NO DISCORD ==========--
+local function avisarDiscord(peso)
+    if WEBHOOK == "" then return end
+    local link = ("https://www.roblox.com/games/start?placeId=%d&gameInstanceId=%s")
+        :format(PLACE_ID, game.JobId)
+    local req = request or http_request or (syn and syn.request)
+    if not req then return end
+    pcall(function()
+        req({
+            Url = WEBHOOK,
+            Method = "POST",
+            Headers = { ["Content-Type"] = "application/json" },
+            Body = HttpService:JSONEncode({
+                content = ("🥚 Ovo gigante: %s kg\nEntrar no servidor: %s"):format(tostring(peso), link)
+            })
+        })
+    end)
+end
+
 --========== LOOP PRINCIPAL ==========--
 task.spawn(function()
     while task.wait(2) do
         if rodandoBot then
-            -- Já achou? Fica no ovo e não troca mais de sala
-            if ovoAlvo and ovoAlvo.Parent then
-                irAteOvo(ovoAlvo)
-                setStatus("Ovo gigante alvo! Fique aqui.", Color3.fromRGB(255, 215, 0))
-            else
-                ovoAlvo = nil
-                setStatus("Procurando ovo gigante...")
-                task.wait(3) -- espera o mapa carregar
-                local ovo, peso = acharOvoGigante()
-                if ovo then
-                    ovoAlvo = ovo
-                    setStatus(("GIGANTE achado! Peso: %s"):format(tostring(peso)), Color3.fromRGB(255, 215, 0))
-                    irAteOvo(ovo)
+            if ovoAlvo then
+                -- Achou gigante: fica parado ate o ovo sumir
+                if ovoAlvo.Parent then
+                    setStatus("Ovo gigante aqui! Pegue ele.", Color3.fromRGB(255, 215, 0))
                 else
+                    ovoAlvo = nil
+                end
+            else
+                setStatus("Procurando ovo raro...")
+                task.wait(3)
+                local ovo, peso, raroPequeno = acharOvoGigante()
+                if ovo then
+                    -- raro E gigante: para aqui
+                    ovoAlvo = ovo
+                    setStatus(("GIGANTE achado! %s kg"):format(tostring(peso)), Color3.fromRGB(255, 215, 0))
+                    irAteOvo(ovo)
+                    avisarDiscord(peso)
+                elseif raroPequeno then
+                    -- raro mas pequeno: troca de servidor para rerolar o peso
+                    setStatus(("Raro pequeno (%s kg). Trocando..."):format(tostring(maiorVisto)), Color3.fromRGB(255, 150, 0))
                     alternarServidor()
+                else
+                    -- nenhum raro: fica no servidor esperando spawn
+                    local esperou = os.clock() - inicioServidor
+                    if ESPERAR_SEGUNDOS > 0 and esperou >= ESPERAR_SEGUNDOS then
+                        alternarServidor()
+                    else
+                        setStatus(("Nenhum raro aqui. Aguardando spawn... (%ds)"):format(math.floor(esperou)), Color3.fromRGB(0, 200, 255))
+                        task.wait(5)
+                    end
                 end
             end
         end
